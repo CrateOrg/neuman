@@ -1,0 +1,219 @@
+#!/bin/sh
+# shellcheck disable=SC2039
+
+set -e
+
+error() {
+    echo "Error: $1" >&2
+    rm -f "$LOCK_FILE"
+    exit 1
+}
+
+error_notify() {
+    readonly ERR_MSG=$(tail "$FILE_LOG" |
+        grep -F "[error]" |
+        grep -vF "[error] --- Traceback")
+    notify-send "Bot: $APP failed" "$ERR_MSG"
+    echo "$ERR_MSG" >&2
+    exit 1
+}
+
+debug() {
+    if [ "$NEUMAN_DEBUG" = "true" ]; then
+        echo "Debug: $1"
+    fi
+}
+
+process_exists() {
+    # shellcheck disable=SC2009
+    if ps aux | grep -v grep | grep "java -jar" | grep -q "$APP.sikul"; then
+        echo "yes"
+    else
+        echo "no"
+    fi
+}
+
+get_memory() {
+    local ENV_VAR="$1"
+    FOUND_VAR=$(grep "^$ENV_VAR=" "$INSTANCE_DIR/memory" 2>/dev/null |
+        cut -d "=" -f 2)
+    [ -z "$FOUND_VAR" ] && FOUND_VAR="Unknown"
+    echo "$FOUND_VAR"
+}
+
+# VARIABLES ##################################################################
+
+if [ -z "$1" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    man neuman.1 || ronn -r <README.md | man -l -
+    exit 0
+fi
+
+readonly APP="$1"
+readonly OPTION="$2"
+
+# set environment variable to default instance
+[ -z "$NEUMAN_INSTANCE" ] && NEUMAN_INSTANCE="default"
+
+readonly THIS_DIR=$(pwd)
+readonly DIR_CFG="$HOME/.local/share/neuman"
+readonly DIR_LOGS="$DIR_CFG/logs"
+readonly FILE_LOG="$DIR_LOGS/$APP""_""$NEUMAN_INSTANCE.log"
+
+# keyboard layout
+readonly KEY_LAYOUT=$(grep "XKBLAYOUT=" /etc/default/keyboard |
+    sed 's/XKBLAYOUT=//' 2>/dev/null | tr -d \")
+[ -z "$KEY_LAYOUT" ] && error "Failed to get keyboard layout"
+
+readonly BOT_DIR_NAME="$APP.sikuli"
+readonly BOT_BIN_NAME="$APP.py"
+readonly BOT_SCRIPT_A="$THIS_DIR/$BOT_DIR_NAME/$BOT_BIN_NAME"
+readonly BOT_SCRIPT_B="$THIS_DIR/$BOT_BIN_NAME"
+
+if [ -f "$BOT_SCRIPT_A" ]; then
+    readonly MAIN_BIN="$BOT_SCRIPT_A"
+elif [ -f "$BOT_SCRIPT_B" ]; then
+    readonly MAIN_BIN="$BOT_SCRIPT_B"
+else
+    error "Neither $BOT_SCRIPT_A nor $BOT_SCRIPT_B exists"
+fi
+
+# INIT #######################################################################
+
+readonly MAIN_DIR=$(dirname "$MAIN_BIN")
+[ ! -d "$MAIN_DIR" ] && error "Directory not found: $MAIN_DIR"
+cd "$MAIN_DIR" || error "Failed to change directory to $MAIN_DIR"
+
+# change current working directory to the script's directory
+[ ! -f "$MAIN_BIN" ] && error "File not found: $MAIN_BIN"
+
+# set keyboard layout for xdotool
+setxkbmap "$KEY_LAYOUT" || error "Failed to set keyboard layout"
+debug "Keyboard set to: $KEY_LAYOUT"
+
+# create log directory if it doesn't exist
+[ ! -d "$DIR_LOGS" ] && mkdir -p "$DIR_LOGS"
+
+readonly APP_INFO=$(head -n 1 "$MAIN_BIN" |
+    sed 's/^#info: //' |
+    sed 's/^# info: //')
+[ -z "$APP_INFO" ] &&
+    error "Failed to get '#info:' from line 1 in $MAIN_BIN"
+readonly APP_MSG="Starting Bot: $APP"
+readonly APP_OBJECTIVE="Objective: $APP_INFO"
+
+# show state of the bot instead of running it
+if [ "$OPTION" = "state" ]; then
+
+    readonly RED=$(tput setaf 1)
+    readonly GREEN=$(tput setaf 2)
+    readonly YELLOW=$(tput setaf 3)
+    readonly BLUE=$(tput setaf 4)
+    readonly NOCOL=$(tput sgr0)
+
+    readonly INSTANCE_DIR="/dev/shm/neuman/$NEUMAN_INSTANCE"
+
+    readonly STRIP_1="\[error\] Hot key conflicts"
+    readonly STRIP_2="\[error\] HotkeyManager: addHotkey: failed"
+    readonly STRIP_3="--- Traceback"
+
+    RUN_STATE=""
+    while true; do
+
+        # math rutine
+        if [ -d "$INSTANCE_DIR" ]; then
+            ENV_NEUMAN_HOST=$(get_memory "NEUMAN_HOST")
+            ENV_NEUMAN_THOUGHT=$(get_memory "NEUMAN_THOUGHT")
+            LOGS_LAST=$(tail -n 50 "$FILE_LOG" 2>/dev/null |
+                sed "/$STRIP_1/d" |
+                sed "/$STRIP_2/d" |
+                sed "/$STRIP_3/d" |
+                tail -n 10)
+            LOGS_ERR=$(echo "$LOGS_LAST" |
+                grep '^\[error' 2>/dev/null |
+                sed "s|\[e|  ${RED}E|g" |
+                sed "s|]|:${NOCOL}|g")
+            LOGS_USER=$(echo "$LOGS_LAST" |
+                grep '^\[user' 2>/dev/null |
+                sed "s|\[user (|  ${BLUE}|g" |
+                sed "s|)\]|${NOCOL}|g")
+            [ -z "$LOGS_USER" ] && LOGS_USER="  No user logs"
+            FATIQUE=$(get_memory "fatique")
+            # check if the last log line starts with [error]
+            if echo "$LOGS_LAST" | tail -n 1 | grep -q '^\[error]'; then
+                STATE="${YELLOW}Error${NOCOL}"
+            else
+                RUN_STATE=$(process_exists)
+                if [ "$RUN_STATE" = "yes" ]; then
+                    STATE="${YELLOW}Running${NOCOL}"
+                else
+                    STATE="Not running"
+                fi
+            fi
+        fi
+
+        # draw rutine
+        clear
+        echo "${RED}################### Bot: $APP ###################${NOCOL}"
+        echo ""
+        if [ -d "$INSTANCE_DIR" ]; then
+            echo "  ${GREEN}State:${NOCOL} $STATE"
+            echo "  ${GREEN}Instance:${NOCOL} $NEUMAN_INSTANCE"
+            echo "  ${GREEN}Objective:${NOCOL} $APP_INFO"
+            echo "  ${GREEN}Host:${NOCOL} $ENV_NEUMAN_HOST"
+            echo "  ${GREEN}Thought:${NOCOL} $ENV_NEUMAN_THOUGHT"
+            echo "  ${GREEN}Fatique:${NOCOL} $FATIQUE"
+            echo "  ${GREEN}Last actions:${NOCOL}"
+            echo "$LOGS_USER"
+            echo "$LOGS_ERR"
+        else
+            echo "  ${GREEN}Instance:${NOCOL} $NEUMAN_INSTANCE"
+            echo "  ${GREEN}State:${YELLOW} Bot has no instance${NOCOL}"
+        fi
+        echo ""
+        echo ""
+        echo ""
+        sleep 1
+
+    done
+    exit 0
+fi
+
+# link systems sikuli site packages to user site packages
+readonly DIR_ROOT_JYTHON_PKGS="/usr/lib/sikulix/dist-packages"
+readonly DIR_USER_JYTHON_PKGS="$HOME/.Sikulix/Lib/site-packages"
+if [ -d "$DIR_ROOT_JYTHON_PKGS" ]; then
+    for i in "$DIR_ROOT_JYTHON_PKGS"/*; do
+        PKG_DIR_NAME=$(basename "$i")
+        DIR_USER_LIB="$DIR_USER_JYTHON_PKGS/$PKG_DIR_NAME"
+        if [ -L "$DIR_USER_LIB" ]; then
+            debug "Using lib: $DIR_USER_LIB"
+        elif [ ! -d "$DIR_USER_LIB" ]; then
+            debug "Linking and using lib: $DIR_USER_LIB"
+            ln -s "$i" "$DIR_USER_JYTHON_PKGS" || error "Failed to link $i"
+        elif [ -d "$DIR_USER_LIB" ]; then
+            debug "Using user provided lib: $DIR_USER_LIB"
+        else
+            error "Not a directory or symlink: $i"
+        fi
+    done
+fi
+
+debug "Bot dir: $MAIN_DIR"
+echo "$APP_MSG"
+echo "$APP_OBJECTIVE"
+notify-send "$APP_MSG" "$APP_OBJECTIVE" || true
+
+SIKULI_VER=$(find /opt -name "SikuliX*.jar" | head -n 1)
+[ -z "$SIKULI_VER" ] && error "SikuliX not found in /opt"
+debug "SikuliX: $SIKULI_VER"
+
+TODAY=$(date +"%m/%d/%y, %I:%M:%S %p")
+debug "Loading java..."
+echo "[user ($TODAY)] Loading java..." >"$FILE_LOG"
+
+java -jar "$SIKULI_VER" \
+    -d 2 \
+    -f "$FILE_LOG" \
+    -r "$MAIN_DIR" || error_notify
+
+notify-send "Bot finished" || true

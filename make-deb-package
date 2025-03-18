@@ -1,0 +1,93 @@
+#!/bin/sh
+
+# run from anywhere
+APP_DIR_FULL=$(realpath "$0")
+APP_DIR=$(dirname "$APP_DIR_FULL")
+cd "$APP_DIR" || exit 1
+
+# automatic increase minor version number whith each build
+VERSION_FILE="version"
+VERSION_MAJOR=$(sed -n '1p' $VERSION_FILE)
+VERSION_MINOR=$(sed -n '2p' $VERSION_FILE)
+VERSION_MINOR_NEW=$((1 + VERSION_MINOR))
+sed -i "2 s/$VERSION_MINOR\$/$VERSION_MINOR_NEW/g" $VERSION_FILE
+VERSION="$VERSION_MAJOR.$VERSION_MINOR_NEW"
+
+# variables
+NAME="neuman"
+README="README.md"
+RELEASES="releases"
+TARGET="DEBIAN"
+MAN_PAGE=1
+FILE_MAN="$NAME.$MAN_PAGE.gz"
+PATH_BASE="./$RELEASES/$NAME-$VERSION"
+PATH_INSTALL="$PATH_BASE/usr"
+PATH_BASH_COMP="$PATH_BASE/usr/share/bash-completion/completions"
+PATH_BIN="$PATH_INSTALL/bin"
+PATH_SHARE="$PATH_INSTALL/share/$NAME"
+PATH_TARGET="$PATH_BASE/$TARGET"
+PATH_MAN="$PATH_INSTALL/share/man/man$MAN_PAGE"
+PATH_DIST_PKGS="$PATH_INSTALL/lib/sikulix/dist-packages"
+
+# delete the old build
+echo "Cleaning up old build"
+rm -rf "$PATH_BASE"
+
+# copy relevant files from source to release
+echo "Copying relevant source files"
+mkdir -p "$PATH_SHARE" "$PATH_BIN" "$PATH_MAN" "$PATH_BASH_COMP" || exit 1
+cp -t "$PATH_SHARE" "README.md" "copyright" || exit 1
+chmod 0755 "$NAME" || exit 1
+cp -t "$PATH_BIN" "$NAME" || exit 1
+cp -t "$PATH_BASH_COMP" "bash_completion/neuman" || exit 1
+
+# copy python packages
+mkdir -p "$PATH_DIST_PKGS" || exit 1
+cp -r -t "$PATH_DIST_PKGS" \
+    "neuman.sikuli" \
+    "neuman_extend.sikuli" \
+    "neuman_extend_images.sikuli" || exit 1
+
+# build man page
+ronn -r <"$README" | gzip -9n >"$PATH_MAN/$FILE_MAN" || exit 1
+# get description
+DESCRIPTION=$(sed -n -e '1 s/^.*) -- //p' <"$README") || exit 1
+
+# create Debian control file
+echo "Creating CONTROL file"
+mkdir -p "$PATH_TARGET"
+echo "Package: $NAME
+Version: $VERSION
+Section: misc
+Priority: optional
+Architecture: all
+Depends: autovoice, autotype, default-jre-headless | default-jre | default-jdk | default-jdk-headless
+Maintainer: Swedish Defence Research Agency <bodo.endres@foi.se>
+Description: $DESCRIPTION
+" >"$PATH_TARGET/control"
+
+# build
+echo "Building"
+fakeroot dpkg-deb --build "$PATH_BASE"
+
+# pack source files
+echo "Packing source"
+zip -q -r "$RELEASES/$NAME-$VERSION.source.zip" ./* \
+    -x $RELEASES\* \
+    -x .*\* \
+    -x ./*DEV_\*
+wait
+
+# replace latest version
+cd "$RELEASES" || exit 1
+ln -sf "$NAME-$VERSION.deb" "$NAME-LATEST.deb"
+ln -sf "$NAME-$VERSION.source.zip" "$NAME-LATEST.source.zip"
+cd "$APP_DIR" || exit 1
+
+# clean up
+echo "Clean up"
+rm -rf "$PATH_BASE"
+
+# check
+echo "Checking:"
+lintian -c "$PATH_BASE.deb"
