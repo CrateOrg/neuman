@@ -302,6 +302,6 @@ See license file
 
 ## SEE ALSO
 
-autotype(1), java(1)
+autotype(1), autovoice(1), java(1)
 
 http://www.sikulix.com/
