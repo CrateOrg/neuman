@@ -158,7 +158,7 @@ Here is an example for the import of the base 'neuman' library:
 - `neuman_extend_images` : Extended Neuman Bot Library Images.  
   Part of the Extended Neuman Library. Contains static image data.
 
-## INCLUDED LIBRARIE REFERENCE: neuman
+## INCLUDED LIBRARY REFERENCE: neuman
 
 ### Global Variables:
 
@@ -263,7 +263,7 @@ to be analyzed later.
 Simulates typing with an optional delay or from a file.  
 Choose between a text string or a file path. Not both.
 
-## INCLUDED LIBRARIE REFERENCE: neuman extend
+## INCLUDED LIBRARY REFERENCE: neuman extend
 
 This also includes the 'neuman extend images' library.
 
