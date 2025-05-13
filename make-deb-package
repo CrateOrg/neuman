@@ -36,7 +36,7 @@ rm -rf "$PATH_BASE"
 # copy relevant files from source to release
 echo "Copying relevant source files"
 mkdir -p "$PATH_SHARE" "$PATH_BIN" "$PATH_MAN" "$PATH_BASH_COMP" || exit 1
-cp -t "$PATH_SHARE" "README.md" "copyright" || exit 1
+cp -t "$PATH_SHARE" "README.md" "copyright" "wallpaper.png" || exit 1
 chmod 0755 "$NAME" || exit 1
 cp -t "$PATH_BIN" "$NAME" || exit 1
 cp -t "$PATH_BASH_COMP" "bash_completion/neuman" || exit 1
@@ -61,7 +61,7 @@ Version: $VERSION
 Section: misc
 Priority: optional
 Architecture: all
-Depends: autovoice, autotype, default-jre-headless | default-jre | default-jdk | default-jdk-headless
+Depends: autotype, at-spi2-core, default-jre | default-jdk
 Maintainer: Swedish Defence Research Agency <bodo.endres@foi.se>
 Description: $DESCRIPTION
 " >"$PATH_TARGET/control"

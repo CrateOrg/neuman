@@ -1,6 +1,7 @@
 # info: Neuman Bot Library
 # This is the basic library, it shall not include any images or specific file
 # dependencies. It should be able to run without any additional files.
+# coding=utf-8
 
 import org.sikuli.script.SikulixForJython
 from sikuli import *
@@ -11,29 +12,39 @@ from subprocess import PIPE, Popen
 # FUNCTIONS ##################################################################
 
 def nm_error(text):
-    Debug.error(text)
+    Debug.error(str(text))
     exit(1)
 
 
 # will write to log and show while using 'state' option
 # use this for normal bot behavior
 def nm_log(text):
-    Debug.user(text)
+    Debug.user(str(text))
 
 
 # will write [info] debug data to log
 # use this only for debugging and development
 def nm_debug(text):
     if env_debug == 'true':
-        Debug.info(text)
+        Debug.info(str(text))
 
 
 # will write [info] debug data to log and show in console
-# use this only for debugging and development
+# use this only for debugging during development of this library
 def nm_debug_verbose(text):
     if env_debug == 'true':
-        print(text)
-        Debug.info(text)
+        print((str(text)))
+        Debug.info(str(text))
+
+
+def nm_cmd_exists(cmd):
+    if env_host == 'remote':
+        cmd_check = 'command -v ' + cmd + ' >/dev/null 2>&1 || echo no'
+        cmd_result, cmd_err = nm_host_cmd(cmd_check)
+        if cmd_result == "no":
+            return False
+        else:
+            return True
 
 
 def nm_set_env(var_name, valid_values, optional=False):
@@ -79,22 +90,10 @@ def nm_create_config():
     # remove ".sikuli" from the end of the name
     script_name = script_name.replace(".sikuli", "")
     log_dir = os.path.expanduser("~") + "/.local/share/neuman/logs"
-    log_file = log_dir + "/" + script_name + ".log"
+    log_file = log_dir + "/" + script_name + "_" + env_instance + ".log"
     # check if log file exists
     if not os.path.exists(log_file):
         nm_error("Log file not found: " + log_file)
-
-    # bugfix:
-    # remove useless error los a where you can't disable hotkey conflicts
-    strip_1 = "[error] Hot key conflicts"
-    strip_2 = "[error] HotkeyManager: addHotkey: failed"
-    with open(log_file, "r") as f:
-        log_data = f.readlines()
-    with open(log_file, "w") as f:
-        for line in log_data:
-            # remove specific lines from the log file
-            if strip_1 not in line and strip_2 not in line:
-                f.write(line)
 
 
 def nm_click(image):
@@ -200,7 +199,9 @@ def nm_host_cmd(cmd):
         nm_debug("Host cmd: " + cmd)
     else:
         cmd_bin = cmd.split(" ")[0]
-        if cmd_bin == "autovoice" or cmd_bin == "autotype":
+        if cmd_bin == "autovoice" \
+                or cmd_bin == "autotype" \
+                or cmd_bin == "command":
             pass
         else:
             nm_debug("Host cmd: " + cmd_bin)
@@ -285,7 +286,10 @@ def nm_sleep(time):
 def nm_speak(text):
     nm_log("Speak: " + str(text))
     if env_host == 'remote':
-        nm_host_cmd('autovoice "' + text + '."')
+        if nm_cmd_exists('autovoice'):
+            nm_host_cmd('autovoice "' + text + '."')
+        else:
+            nm_debug("skip nm_speak: autovoice is not installed")
     else:
         nm_debug("nm_speak not implemented on 'local' machines")
 
@@ -293,7 +297,10 @@ def nm_speak(text):
 def nm_speak_bg(text):
     nm_log("Speak: " + str(text))
     if env_host == 'remote':
-        nm_host_cmd_bg('autovoice "' + text + '."')
+        if nm_cmd_exists('autovoice'):
+            nm_host_cmd_bg('autovoice "' + text + '."')
+        else:
+            nm_debug("skip nm_speak_bg: autovoice is not installed")
     else:
         nm_debug("nm_speak_bg not implemented on 'local' machines")
 
@@ -372,6 +379,9 @@ env_thought = nm_set_env(
     'NEUMAN_THOUGHT',
     ['silent', 'verbal', 'verbal_wait']
 )
+
+if not nm_cmd_exists('autotype'):
+    nm_error("autotype is not installed")
 
 # use the prefix 'nmv' for all variables that are global to that instance
 

@@ -1,15 +1,17 @@
-neuman(1) -- Bot framework to emulate and automate a computer user
+neuman(1) -- Bot library to emulate and automate a computer user
 =============================================
 
 ## SYNOPSIS
 
-`neuman` _bot_name_ [ **state** ]
+`neuman` _bot_name_ [ **--state** ]
+
+or
+
+`neuman` **--set** _memory_variable_  _memory_variable_value_
 
 ## DESCRIPTION
 
-This is a BETA version. Things that don't work are marked as BETA.
-
-Neuman is a bot program and framework based on SikuliX and additional Python
+Neuman is a bot program and library based on SikuliX and additional Python
 libraries. Automate repetitive tasks on a computer, in a similar way to a
 human.
 
@@ -25,9 +27,24 @@ monitoring.
 - `-h, --help`
   Display this manual page.
 
-- `state`  
-  Show the current state of the bot, including logs, running status, and system
-  information.
+## USAGE
+
+To start a bot, run the command:
+
+    $ neuman <bot_name>
+
+To check the state of a running bot, run the command:
+
+    $ neuman <bot_name> --state
+
+To set a memory variable, run the command:
+
+    $ export NEUMAN_INSTANCE=<instance_name>
+    $ neuman --set <memory_variable> <memory_variable_value>
+
+Setting a memory variable for a specific instance allows the bot to 'remember'
+Setting the variable for the next time it is started. Is also uses to pass
+parameters and data to the bot.
 
 ## ENVIRONMENT
 
@@ -75,7 +92,7 @@ BETA: Some layouts are not supported. See autotype(1) for more information.
 
 Monitor the state of a running bot:
 
-    $ neuman mybot state
+    $ neuman mybot --state
 
 Open another terminal and start the bot:
 
@@ -86,6 +103,12 @@ Now switch over to a fullscreen remote desktop viewer and watch the bot work.
 Another example, set another instance name and thought mode:
 
     $ NEUMAN_INSTANCE=another NEUMAN_THOUGHT=verbal_wait neuman mybot
+
+Set a memory variable for a specific instance:
+
+    $ export NEUMAN_INSTANCE=peters_pc
+    $ neuman --set peters_rdp_port 3389
+    $ neuman --set peters_rdp_user peterk
 
 ## KNOWN BUGS
 
@@ -98,13 +121,19 @@ modifier. It seems virt-viewer ignores, or intercepst ALT_R, and then ignores
 it. Use ydotool to get around this problem. This is automatically solved by the
 package `autotype`.
 
+Sometimes when SikulyX is started for the first time, the error:
+`[error] RunTime:doResourceListJar: ... because "dir" is null` appears.
+This is a bug in SikuliX. It can be ignored, as it does not affect the
+functionality.
+
 ## DEPENDENCIES
 
-- `autovoice` (for speech output)
 - `autotype` (will also install ydotool and/or xdotool)
 - `SikuliX` (install to /opt/SikuliX*.jar , tested with SikuliX-2.0.5
-- `java runtime` (at least jre-headless, tested with JRE 17)
+- `java runtime` (at least jre, not headless, tested with JRE 17)
+- `autovoice` (optional, for speech output)
 - `notify-send` (optional, for start and stop popup-notifications)
+- `at-spi2-core` (not required, but will supress some error messages)
 
 ## LIBRARIES OVERVIEW AND USAGE
 
@@ -299,6 +328,10 @@ Can close the terminal automatically if close=True.
 ## COPYRIGHT
 
 See license file
+
+'Cybernetic, cyborg, halloween icon' by Lima Studio
+https://www.iconfinder.com/icons/8468005
+Attribution 3.0 Unported (CC BY 3.0)
 
 ## SEE ALSO
 

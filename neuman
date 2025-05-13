@@ -9,11 +9,17 @@ error() {
     exit 1
 }
 
+notify() {
+    if [ -x "$(command -v notify-send)" ]; then
+        notify-send "$1" 1>/dev/null 2>&1 || true
+    fi
+}
+
 error_notify() {
     readonly ERR_MSG=$(tail "$FILE_LOG" |
         grep -F "[error]" |
         grep -vF "[error] --- Traceback")
-    notify-send "Bot: $APP failed" "$ERR_MSG"
+    notify "Bot: $APP failed" "$ERR_MSG"
     echo "$ERR_MSG" >&2
     exit 1
 }
@@ -35,10 +41,39 @@ process_exists() {
 
 get_memory() {
     local ENV_VAR="$1"
-    FOUND_VAR=$(grep "^$ENV_VAR=" "$INSTANCE_DIR/memory" 2>/dev/null |
+
+    FOUND_VAR=$(grep "^$ENV_VAR=" "$MEMORY" 2>/dev/null |
         cut -d "=" -f 2)
     [ -z "$FOUND_VAR" ] && FOUND_VAR="Unknown"
     echo "$FOUND_VAR"
+}
+
+set_memory() {
+    local ENV_VAR="$1"
+    local ENV_VALUE="$2"
+
+    [ -z "$ENV_VALUE" ] && error "$ENV_VAR is empty"
+
+    [ "$NEUMAN_INSTANCE" = "default" ] &&
+        error "default instance has no memory, set NEUMAN_INSTANCE before"
+
+    # make sure the variable does not contain pipe symbol
+    if echo "$ENV_VALUE" | grep -Fq "|"; then
+        error "Pipe symbol '|' is not allowed in $ENV_VAR"
+    fi
+
+    if [ ! -d "$INSTANCE_DIR" ]; then
+        mkdir -p "$INSTANCE_DIR" || error "Failed to create $INSTANCE_DIR"
+    fi
+
+    touch "$MEMORY" || error "Failed to create $MEMORY"
+
+    if grep -q "^$ENV_VAR=" "$MEMORY"; then
+        sed -i "s|^$ENV_VAR=.*|$ENV_VAR=$ENV_VALUE|" "$MEMORY" ||
+            error "Failed to set $ENV_VAR in $MEMORY"
+    else
+        echo "$ENV_VAR=$ENV_VALUE" >>"$MEMORY"
+    fi
 }
 
 # VARIABLES ##################################################################
@@ -48,16 +83,36 @@ if [ -z "$1" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     exit 0
 fi
 
+# set instance
+[ -z "$NEUMAN_INSTANCE" ] && NEUMAN_INSTANCE="default"
+readonly INSTANCE_DIR="/dev/shm/neuman/$NEUMAN_INSTANCE"
+readonly MEMORY="$INSTANCE_DIR/memory"
+
+# set memory
+if [ "$1" = "--set" ]; then
+    # set memory variable
+    readonly MEMORY_VAR="$2"
+    readonly MEMORY_VALUE="$3"
+
+    [ -z "$MEMORY_VAR" ] && error "Memory variable is empty"
+    [ -z "$MEMORY_VALUE" ] && error "Memory value is empty"
+
+    set_memory "$MEMORY_VAR" "$MEMORY_VALUE"
+    exit 0
+fi
+
 readonly APP="$1"
 readonly OPTION="$2"
 
-# set environment variable to default instance
-[ -z "$NEUMAN_INSTANCE" ] && NEUMAN_INSTANCE="default"
-
+# set environment variable
 readonly THIS_DIR=$(pwd)
 readonly DIR_CFG="$HOME/.local/share/neuman"
 readonly DIR_LOGS="$DIR_CFG/logs"
 readonly FILE_LOG="$DIR_LOGS/$APP""_""$NEUMAN_INSTANCE.log"
+readonly DIR_ROOT_JYTHON_PKGS="/usr/lib/sikulix/dist-packages"
+
+# set default display if not set
+[ -z "$DISPLAY" ] && export DISPLAY=:0
 
 # keyboard layout
 readonly KEY_LAYOUT=$(grep "XKBLAYOUT=" /etc/default/keyboard |
@@ -68,13 +123,16 @@ readonly BOT_DIR_NAME="$APP.sikuli"
 readonly BOT_BIN_NAME="$APP.py"
 readonly BOT_SCRIPT_A="$THIS_DIR/$BOT_DIR_NAME/$BOT_BIN_NAME"
 readonly BOT_SCRIPT_B="$THIS_DIR/$BOT_BIN_NAME"
+readonly BOT_SCRIPT_C="$DIR_ROOT_JYTHON_PKGS/$BOT_DIR_NAME/$BOT_BIN_NAME"
 
 if [ -f "$BOT_SCRIPT_A" ]; then
     readonly MAIN_BIN="$BOT_SCRIPT_A"
 elif [ -f "$BOT_SCRIPT_B" ]; then
     readonly MAIN_BIN="$BOT_SCRIPT_B"
+elif [ -f "$BOT_SCRIPT_C" ]; then
+    readonly MAIN_BIN="$BOT_SCRIPT_C"
 else
-    error "Neither $BOT_SCRIPT_A nor $BOT_SCRIPT_B exists"
+    error "Neither $BOT_SCRIPT_A, $BOT_SCRIPT_B nor $BOT_SCRIPT_C exists"
 fi
 
 # INIT #######################################################################
@@ -86,7 +144,7 @@ cd "$MAIN_DIR" || error "Failed to change directory to $MAIN_DIR"
 # change current working directory to the script's directory
 [ ! -f "$MAIN_BIN" ] && error "File not found: $MAIN_BIN"
 
-# set keyboard layout for xdotool
+# set keyboard layout for xdotool (part of autotype)
 setxkbmap "$KEY_LAYOUT" || error "Failed to set keyboard layout"
 debug "Keyboard set to: $KEY_LAYOUT"
 
@@ -98,23 +156,23 @@ readonly APP_INFO=$(head -n 1 "$MAIN_BIN" |
     sed 's/^# info: //')
 [ -z "$APP_INFO" ] &&
     error "Failed to get '#info:' from line 1 in $MAIN_BIN"
-readonly APP_MSG="Starting Bot: $APP"
+readonly APP_MSG="Start Bot: $APP"
 readonly APP_OBJECTIVE="Objective: $APP_INFO"
 
-# show state of the bot instead of running it
-if [ "$OPTION" = "state" ]; then
-
+if [ "$OPTION" = "--state" ]; then
+    # show state of the bot instead of running it
     readonly RED=$(tput setaf 1)
     readonly GREEN=$(tput setaf 2)
     readonly YELLOW=$(tput setaf 3)
     readonly BLUE=$(tput setaf 4)
     readonly NOCOL=$(tput sgr0)
 
-    readonly INSTANCE_DIR="/dev/shm/neuman/$NEUMAN_INSTANCE"
-
+    # bugfix:
+    # ignore useless error logs
     readonly STRIP_1="\[error\] Hot key conflicts"
     readonly STRIP_2="\[error\] HotkeyManager: addHotkey: failed"
     readonly STRIP_3="--- Traceback"
+    readonly STRIP_4="java.io.File.getPath()"
 
     RUN_STATE=""
     while true; do
@@ -127,6 +185,7 @@ if [ "$OPTION" = "state" ]; then
                 sed "/$STRIP_1/d" |
                 sed "/$STRIP_2/d" |
                 sed "/$STRIP_3/d" |
+                sed "/$STRIP_4/d" |
                 tail -n 10)
             LOGS_ERR=$(echo "$LOGS_LAST" |
                 grep '^\[error' 2>/dev/null |
@@ -178,9 +237,31 @@ if [ "$OPTION" = "state" ]; then
     exit 0
 fi
 
-# link systems sikuli site packages to user site packages
-readonly DIR_ROOT_JYTHON_PKGS="/usr/lib/sikulix/dist-packages"
-readonly DIR_USER_JYTHON_PKGS="$HOME/.Sikulix/Lib/site-packages"
+SIKULI_VER=$(find /opt -name "SikuliX*.jar" | head -n 1)
+[ -z "$SIKULI_VER" ] && error "SikuliX not found in /opt"
+debug "SikuliX: $SIKULI_VER"
+
+# bugfix: create sikulix directory and file structure
+# else sikulix will complain about missing directories and or files
+readonly DIR_SIKULIX="$HOME/.Sikulix"
+readonly DIR_SIKULIX_STORE="$DIR_SIKULIX/SikulixStore"
+readonly DIR_SIKULIX_LIBS="$DIR_SIKULIX/SikulixLibs"
+readonly DIR_SIKULIX_DL="$DIR_SIKULIX/SikulixDownloads"
+readonly DIR_SIKULIX_LIB="$DIR_SIKULIX/Lib"
+readonly DIR_SIKULIX_EXT="$DIR_SIKULIX/Extensions"
+readonly DIR_USER_JYTHON_PKGS="$DIR_SIKULIX_LIB/site-packages"
+
+if ! [ -d "$DIR_USER_JYTHON_PKGS" ]; then
+    mkdir -p "$DIR_SIKULIX_STORE" \
+        "$DIR_SIKULIX_LIBS" \
+        "$DIR_SIKULIX_DL" \
+        "$DIR_SIKULIX_LIB" \
+        "$DIR_SIKULIX_EXT" \
+        "$DIR_USER_JYTHON_PKGS"
+
+    touch "$DIR_SIKULIX_STORE/lastUsedJar.txt"
+fi
+
 if [ -d "$DIR_ROOT_JYTHON_PKGS" ]; then
     for i in "$DIR_ROOT_JYTHON_PKGS"/*; do
         PKG_DIR_NAME=$(basename "$i")
@@ -198,22 +279,22 @@ if [ -d "$DIR_ROOT_JYTHON_PKGS" ]; then
     done
 fi
 
+# abort if java is not installed
+if ! command -v java >/dev/null; then
+    error "Java is not installed"
+fi
+
 debug "Bot dir: $MAIN_DIR"
 echo "$APP_MSG"
 echo "$APP_OBJECTIVE"
-notify-send "$APP_MSG" "$APP_OBJECTIVE" || true
+notify "$APP_MSG $APP_OBJECTIVE"
 
-SIKULI_VER=$(find /opt -name "SikuliX*.jar" | head -n 1)
-[ -z "$SIKULI_VER" ] && error "SikuliX not found in /opt"
-debug "SikuliX: $SIKULI_VER"
-
-TODAY=$(date +"%m/%d/%y, %I:%M:%S %p")
 debug "Loading java..."
-echo "[user ($TODAY)] Loading java..." >"$FILE_LOG"
+echo "[user] Loading java..." >"$FILE_LOG"
 
 java -jar "$SIKULI_VER" \
     -d 2 \
     -f "$FILE_LOG" \
     -r "$MAIN_DIR" || error_notify
 
-notify-send "Bot finished" || true
+notify "Bot finished"

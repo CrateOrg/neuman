@@ -1,1 +1,1 @@
-complete -W "-h --help state" neuman
+complete -W "-h --help --state --set" neuman
