@@ -117,11 +117,11 @@ function `nm_type` or `nm_keycombo`.
 These functions use the package `autotype`, which uses ydotool or xdotool to
 emulate keyboard input.  
 While using virt-manager or virt-viewer 'xdotool key' fails when using ALT_R
-modifier. It seems virt-viewer ignores, or intercepst ALT_R, and then ignores
+modifier. It seems virt-viewer ignores, or intercepts ALT_R, and then ignores
 it. Use ydotool to get around this problem. This is automatically solved by the
 package `autotype`.
 
-Sometimes when SikulyX is started for the first time, the error:
+Sometimes when SikuliX is started for the first time, the error:
 `[error] RunTime:doResourceListJar: ... because "dir" is null` appears.
 This is a bug in SikuliX. It can be ignored, as it does not affect the
 functionality.
