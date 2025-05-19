@@ -5,9 +5,14 @@ neuman(1) -- Bot library to emulate and automate a computer user
 
 `neuman` _bot_name_ [ **--state** ]
 
-or
-
 `neuman` **--set** _memory_variable_  _memory_variable_value_
+
+`neuman-remote` _json_file_
+
+## OPTIONS
+
+`-h, --help`  
+Display this manual page.
 
 ## DESCRIPTION
 
@@ -22,29 +27,89 @@ desktop connection like rdesktop, VNC or virt-viewer.
 It provides debugging information, error handling, and process state
 monitoring.
 
-## OPTIONS
-
-- `-h, --help`
-  Display this manual page.
-
-## USAGE
+## USAGE NEUMAN
 
 To start a bot, run the command:
 
     $ neuman <bot_name>
 
+<bot_name> is the name of the bot. The bot name is the name of the directory
+where the bot is located.
+
+Bots can be put into different directories. For example in `~/My_Bot.sikuli/` .
+See the section 'LIBRARIES OVERVIEW AND USAGE' further down.
+
 To check the state of a running bot, run the command:
 
     $ neuman <bot_name> --state
+
+Setting a memory variable for a specific instance allows the bot to 'remember'
+a variable for the next time it is started. Also used to pass parameters and
+data to the bot.
 
 To set a memory variable, run the command:
 
     $ export NEUMAN_INSTANCE=<instance_name>
     $ neuman --set <memory_variable> <memory_variable_value>
 
-Setting a memory variable for a specific instance allows the bot to 'remember'
-Setting the variable for the next time it is started. Is also uses to pass
-parameters and data to the bot.
+## USAGE NEUMAN-REMOTE
+
+This program simplyfies the usage of Neuman in conjunction with Remote Desktop
+applications. The first argument is a JSON file. All you need to run a complete
+remote bot is a JSON file.
+
+The program `autokiosk` is required to run the remote machine in a kiosk
+window.
+
+Run `neuman-remote` instead of `neuman` to start a bot to a remote machine:
+
+    $ neuman-remote <json_file>
+
+The JSON data has the following format:
+
+**Required fields:**  
+_host_: The remote host to connect to, same as running `autokiosk <host>`.  
+_bot_: The bot program to run, same as running `neuman <bot>`.
+
+**Optional fields:**  
+_close_: If set to 'true', all autokiosk remote desktop connections will be
+closed after the bot has finished. Same as running `autokiosk --close-all`.
+
+**Other fields:**  
+_env_: The environment variables to set. JSON objects. Same as running `export
+<key>=<value>`. Use this to set things like autokiosk RDP user and password, or
+the bot enviornment variable options.  
+_memory_: The bots memory variables to set as JSON objects. Passed on to Neuman
+as a 'memory' variable. Same as running `neuman --set <key> <value>`.
+
+Minimum JSON example:
+
+```json
+{
+  "bot": "hello",
+  "remote": "mydebian.aa"
+}
+```
+
+JSON example with autokiosk settings and memory variables:
+
+```json
+{
+  "bot": "hello",
+  "remote": "vnc:mydebian.aa",
+  "close": "true",
+  "env": {
+    "autokiosk_rdp_user": "hello",
+    "autokiosk_rdp_pass": "1234",
+    "autokiosk_vnc_pass": "5678",
+    "neuman_instance": "mydebian.aa"
+  },
+  "memory": {
+    "chess_play_turns": "4",
+    "algorythm": "minimax"
+  }
+}
+```
 
 ## ENVIRONMENT
 
@@ -66,14 +131,19 @@ parameters and data to the bot.
   the speech is finished before continuing.
 
 - `NEUMAN_HOST` ( default: local | remote )  
-  BETA: Only 'local' is supported at the moment.  
-  Defines the host type. Can be set to 'local' or 'remote'. 'local' will run
-  the bot on the local machine for the local machine, 'remote' will run the bot
-  localy for a remote machine, and interact with the target application over a
-  remote desktop connection. The difference is in the way the bot interacts
-  with the target application. 'local' uses SikuliX to interact with the
-  applications, such as windows title recognition. 'remote' uses advanced image
-  recognition and keyboard emulation to interact with the applications.
+  BETA: Only 'remote' is supported at the moment!  
+  Defines the host type. Can be set to 'local' or 'remote'.  
+  'local' will run the bot on the current host for the current host machine.  
+  'remote' will run the bot locally for a remote machine, and interact with the
+  target application over a remote desktop connection.  
+  The difference is the way the bot interacts with the target application.  
+  'local' uses the hosts OS resources, such as window class recognition. This
+  is Usefule if you want to export the bot from SikuliX as a single
+  independent JAR file, that will be run on the target machine. This is usally
+  more reliable, as the bot can use the hosts OS resources.  
+  'remote' uses only image recognition and keyboard emulation to interact
+  with the applications as if it was a human user. This can be harder to
+  develop for.
 
 ## FILES
 
@@ -82,11 +152,10 @@ Filename format is: <bot_name>_$NEUMAN_INSTANCE.log
 Will be overwritten after same bot restart.
 
 **Storage for instances: /dev/shm/neuman/**  
-The INSTANCE_DIR folder Will be reset after reboot!
+The INSTANCE_DIR folder Will be reset after OS reboot!
 
 **Keyboard layout: /etc/default/keyboard**  
-Determine source hosts keyboard layout.  
-BETA: Some layouts are not supported. See autotype(1) for more information.
+Is read to determine source hosts keyboard layout.
 
 ## EXAMPLES
 
@@ -98,8 +167,6 @@ Open another terminal and start the bot:
 
     $ neuman mybot
 
-Now switch over to a fullscreen remote desktop viewer and watch the bot work.
-
 Another example, set another instance name and thought mode:
 
     $ NEUMAN_INSTANCE=another NEUMAN_THOUGHT=verbal_wait neuman mybot
@@ -107,10 +174,15 @@ Another example, set another instance name and thought mode:
 Set a memory variable for a specific instance:
 
     $ export NEUMAN_INSTANCE=peters_pc
-    $ neuman --set peters_rdp_port 3389
-    $ neuman --set peters_rdp_user peterk
+    $ neuman --set play_turns 4
+    $ neuman --set algorythm minimax
 
 ## KNOWN BUGS
+
+Several characters are not allowed in the neuman-remote JSON file.:  
+```[;&|<>\`$()]=```  
+This can be an issue if you have an RDP or VNC password with these characters.
+Try to avoid them.
 
 A bug appears under virt-manager or virt-viewer while using the neuman
 function `nm_type` or `nm_keycombo`.  
@@ -118,29 +190,37 @@ These functions use the package `autotype`, which uses ydotool or xdotool to
 emulate keyboard input.  
 While using virt-manager or virt-viewer 'xdotool key' fails when using ALT_R
 modifier. It seems virt-viewer ignores, or intercepts ALT_R, and then ignores
-it. Use ydotool to get around this problem. This is automatically solved by the
-package `autotype`.
+it. Install and use `ydotool` to get around this problem. This is automatically
+solved in the package `autotype`.
 
-Sometimes when SikuliX is started for the first time, the error:
-`[error] RunTime:doResourceListJar: ... because "dir" is null` appears.
+Sometimes when SikuliX is started for the first time, the error:  
+`[error] RunTime:doResourceListJar: ... because "dir" is null` appears.  
 This is a bug in SikuliX. It can be ignored, as it does not affect the
 functionality.
 
 ## DEPENDENCIES
 
-- `autotype` (will also install ydotool and/or xdotool)
+- `autotype` (will also install xdotool and optinal ydotool)
 - `SikuliX` (install to /opt/SikuliX*.jar , tested with SikuliX-2.0.5
 - `java runtime` (at least jre, not headless, tested with JRE 17)
 - `autovoice` (optional, for speech output)
 - `notify-send` (optional, for start and stop popup-notifications)
 - `at-spi2-core` (not required, but will supress some error messages)
+- `autokiosk` (optional, for neuman-remote only)
+- `ydotool` (optional, only for virt-viewer or virt-manager)
+
+Whe running the bot in a VM. The Required system specifications are 1 virtual
+CPU core and 1 GiB of RAM.
 
 ## LIBRARIES OVERVIEW AND USAGE
 
-neuman uses SikuilX and additional Python libraries. SikiuliX is a Java and
+Neuman uses SikuliX and additional Python libraries. SikuliX is a Java and
 Jython based automation library that uses image recognition to interact with
 the screen. The additional libraries are written in Python and provide
 additional functionality to the bot.
+
+It is recommended to write all bots as libraries. This allows for easy
+reusability and sharing of code.
 
 System libraries should be installed to:  
 **/usr/lib/sikulix/dist-packages/**
@@ -157,9 +237,9 @@ The library structure for each library and bot script is as follows:
 - Create a base directory for the bot, e.g. 'mybot' that ends in .sikuli
 - Example for a bot: ~/My_Bots/mybot.sikuli/
 - Example for a library: ~/.Sikulix/Lib/site-packages/mybot.sikuli/
-- In each directory, create a file with the same name but ending in .py
-- Example for a bot: ~/My_Bots/mybot.sikuli/mybot.py
-- As a minimum, the file should contain the following lines:
+- In each directory, create a file with the same name and ending in .py
+- Example: ~/My_Bots/mybot.sikuli/mybot.py
+- As a minimum, this file should contain the following lines:
 
       import org.sikuli.script.SikulixForJython
       from sikuli import *
@@ -170,6 +250,9 @@ Here is an example for the import of the base 'neuman' library:
     import org.sikuli.script.SikulixForJython
     from sikuli import *
     from neuman import *
+
+It is not strictly required to use the .sikuli ending or any of the neuman
+libraries. You could write a bot in a single .py file.
 
 ## INCLUDED LIBRARIES OVERVIEW
 
@@ -329,8 +412,8 @@ Can close the terminal automatically if close=True.
 
 See license file
 
-'Cybernetic, cyborg, halloween icon' by Lima Studio
-https://www.iconfinder.com/icons/8468005
+'Cybernetic, cyborg, halloween icon' by Lima Studio  
+https://www.iconfinder.com/icons/8468005  
 Attribution 3.0 Unported (CC BY 3.0)
 
 ## SEE ALSO

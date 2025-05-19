@@ -37,8 +37,8 @@ rm -rf "$PATH_BASE"
 echo "Copying relevant source files"
 mkdir -p "$PATH_SHARE" "$PATH_BIN" "$PATH_MAN" "$PATH_BASH_COMP" || exit 1
 cp -t "$PATH_SHARE" "README.md" "copyright" "wallpaper.png" || exit 1
-chmod 0755 "$NAME" || exit 1
-cp -t "$PATH_BIN" "$NAME" || exit 1
+chmod 0755 "$NAME" "$NAME-remote" || exit 1
+cp -t "$PATH_BIN" "$NAME" "$NAME-remote" || exit 1
 cp -t "$PATH_BASH_COMP" "bash_completion/neuman" || exit 1
 
 # copy python packages
