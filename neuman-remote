@@ -16,7 +16,7 @@ get_json_value() {
 json_to_env() {
     # Convert JSON data to environment variables
     echo "$1" | jq -r \
-        'to_entries[] | "export \(.key | ascii_upcase)=\(.value)"'
+        'to_entries[] | "export \(.key | ascii_upcase)=\"\(.value)\""'
 }
 
 # help
@@ -44,6 +44,11 @@ fi
 # validate json data
 if ! echo "$JSON_DATA" | jq empty; then
     error "Invalid JSON format"
+fi
+
+# validate spaces
+if echo "$JSON_DATA" | jq -r '.. | objects | keys[]' | grep -q ' '; then
+    error "Spaces in JSON keys are not allowed"
 fi
 
 # get the variable "host" from json
@@ -79,12 +84,12 @@ fi
 
 # set neuman memory
 readonly MEMORY=$(echo "$JSON_MEMORY" |
-    jq -r 'to_entries[] | "\(.key)=\(.value)"')
+    jq -r 'to_entries[] | "\(.key)=\(.value)"' | sed "s| |@@@|g")
 if [ -n "$MEMORY" ]; then
     for i in $MEMORY; do
         # get the key and value
-        KEY=$(echo "$i" | cut -d'=' -f1)
-        VALUE=$(echo "$i" | cut -d'=' -f2-)
+        KEY=$(echo "$i" | cut -d'=' -f1 | sed "s|@@@| |g")
+        VALUE=$(echo "$i" | cut -d'=' -f2- | sed "s|@@@| |g")
         # check if the key is empty
         [ -z "$KEY" ] && error "Empty key in memory data"
         # check if the value is empty
